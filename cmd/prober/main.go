@@ -16,12 +16,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func probe(pctx context.Context, m store.Monitor) event.Result {
-	e := event.Result{
+func probe(pctx context.Context, m store.Monitor) event.ProbeResult {
+	e := event.ProbeResult{
 		Monitor:   m.Name,
 		URL:       m.URL,
 		OK:        false,
-		CheckedAt: time.Now(),
+		CheckedAt: time.Now().UTC(),
 	}
 
 	ctx, cancel := context.WithTimeout(pctx, time.Duration(m.Timeout)*time.Second)
@@ -53,13 +53,21 @@ func probe(pctx context.Context, m store.Monitor) event.Result {
 	return e
 }
 
-func runProbe(ctx context.Context, m store.Monitor) {
+func runProbe(ctx context.Context, m store.Monitor, ec *event.Client) {
 	t := time.NewTicker(time.Duration(m.Interval) * time.Second)
 	defer t.Stop()
 
 	for {
 		res := probe(ctx, m)
-		slog.Info("checked", "monitor", res.Monitor, "ok", res.OK)
+		if ctx.Err() != nil {
+			return
+		}
+
+		err := ec.PublishProbe(ctx, res)
+		if err != nil {
+			slog.Error("Couldn't publish probe result", "err", err)
+		}
+
 		select {
 		case <-t.C:
 		case <-ctx.Done():
@@ -81,6 +89,13 @@ func main() {
 	}
 	defer s.Close()
 
+	ec, err := event.NewClient(os.Getenv("KAFKA_URL"))
+	if err != nil {
+		slog.Error("Cloudn't create Kafka client", "err", err)
+		os.Exit(1)
+	}
+	defer ec.Close()
+
 	monitors, err := s.GetMonitors(ctx)
 	if err != nil {
 		slog.Error("Couldn't get monitors", "err", err)
@@ -89,11 +104,9 @@ func main() {
 
 	wg := sync.WaitGroup{}
 	for _, monitor := range monitors {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runProbe(ctx, monitor)
-		}()
+		wg.Go(func() {
+			runProbe(ctx, monitor, ec)
+		})
 	}
 
 	wg.Wait()
