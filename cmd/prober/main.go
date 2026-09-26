@@ -53,7 +53,15 @@ func probe(pctx context.Context, m store.Monitor) event.ProbeResult {
 	return e
 }
 
-func runProbe(ctx context.Context, m store.Monitor, ec *event.Client) {
+type MonitorID = string
+type Prober struct {
+	registry map[MonitorID]context.CancelFunc
+	ec       *event.Client
+	s        *store.Store
+	wg       *sync.WaitGroup
+}
+
+func (p *Prober) runMonitor(ctx context.Context, m store.Monitor) {
 	t := time.NewTicker(time.Duration(m.Interval) * time.Second)
 	defer t.Stop()
 
@@ -63,7 +71,7 @@ func runProbe(ctx context.Context, m store.Monitor, ec *event.Client) {
 			return
 		}
 
-		err := ec.PublishProbe(ctx, res)
+		err := p.ec.PublishProbe(ctx, res)
 		if err != nil {
 			slog.Error("Couldn't publish probe result", "err", err)
 		}
@@ -72,6 +80,46 @@ func runProbe(ctx context.Context, m store.Monitor, ec *event.Client) {
 		case <-t.C:
 		case <-ctx.Done():
 			return
+		}
+	}
+}
+
+func (p *Prober) reconcile(ctx context.Context, am []store.Monitor) {
+	amSet := map[MonitorID]struct{}{}
+
+	for _, m := range am {
+		amSet[m.ID] = struct{}{}
+		if _, ok := p.registry[m.ID]; !ok {
+			nCtx, nCtxCancel := context.WithCancel(ctx)
+			p.registry[m.ID] = nCtxCancel
+			p.wg.Go(func() { p.runMonitor(nCtx, m) })
+		}
+	}
+
+	for m, cf := range p.registry {
+		if _, ok := amSet[m]; !ok {
+			cf()
+			delete(p.registry, m)
+		}
+	}
+}
+
+func (p *Prober) Run(ctx context.Context) {
+	t := time.NewTicker(time.Duration(time.Second * 15))
+	defer t.Stop()
+
+	for {
+		activeMonitors, err := p.s.GetActiveMonitors(ctx)
+		if err != nil {
+			slog.Error("Couldn't get activeMonitors", "err", err)
+		} else {
+			p.reconcile(ctx, activeMonitors)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
 		}
 	}
 }
@@ -96,18 +144,15 @@ func main() {
 	}
 	defer ec.Close()
 
-	monitors, err := s.GetMonitors(ctx)
-	if err != nil {
-		slog.Error("Couldn't get monitors", "err", err)
-		os.Exit(1)
-	}
+	wg := &sync.WaitGroup{}
 
-	wg := sync.WaitGroup{}
-	for _, monitor := range monitors {
-		wg.Go(func() {
-			runProbe(ctx, monitor, ec)
-		})
+	p := Prober{
+		s: s,
+		ec: ec,
+		wg: wg,
+		registry: map[MonitorID]context.CancelFunc{},
 	}
+	p.Run(ctx)
 
 	wg.Wait()
 	slog.Info("Shutting down")

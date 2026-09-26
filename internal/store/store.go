@@ -12,6 +12,7 @@ type Store struct {
 }
 
 type Monitor struct {
+	ID        string
 	Name      string
 	URL       string
 	Interval  int
@@ -20,9 +21,9 @@ type Monitor struct {
 	UpdatedAt time.Time
 }
 
-func (s *Store) GetMonitors(ctx context.Context) ([]Monitor, error) {
+func (s *Store) GetActiveMonitors(ctx context.Context) ([]Monitor, error) {
 	monitors := []Monitor{}
-	rows, err := s.pool.Query(ctx, "SELECT name, url, interval_s, timeout_s, enabled, updated_at FROM monitors")
+	rows, err := s.pool.Query(ctx, "SELECT id, name, url, interval_s, timeout_s, enabled, updated_at FROM monitors WHERE enabled = true")
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +31,7 @@ func (s *Store) GetMonitors(ctx context.Context) ([]Monitor, error) {
 
 	for rows.Next() {
 		curr := Monitor{}
-		err := rows.Scan(&curr.Name, &curr.URL, &curr.Interval, &curr.Timeout, &curr.Enabled, &curr.UpdatedAt)
+		err := rows.Scan(&curr.ID, &curr.Name, &curr.URL, &curr.Interval, &curr.Timeout, &curr.Enabled, &curr.UpdatedAt)
 		if err != nil {
 			continue
 		}
