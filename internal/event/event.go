@@ -3,6 +3,8 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -59,4 +61,49 @@ func NewProducer(kafkaURL string) (*Producer, error) {
 	}
 
 	return &Producer{client: ec}, nil
+}
+
+type Consumer struct {
+	client *kgo.Client
+	group  string
+}
+
+func (c *Consumer) Close() {
+	c.client.Close()
+}
+
+func (c *Consumer) Poll(ctx context.Context, handle func(ProbeResult)) error {
+	fetches := c.client.PollFetches(ctx)
+
+	fetches.EachRecord(func(r *kgo.Record) {
+		parsed, err := Unmarshal(r.Value)
+		if err != nil {
+			slog.Error("Couldn't unmarshal event", "err", err)
+			return
+		}
+		handle(parsed)
+	})
+
+	if fetchErrs := fetches.Errors(); len(fetchErrs) > 0 {
+		errs := []error{}
+		for _, err := range fetches.Errors() {
+			errs = append(errs, err.Err)
+		}
+		return errors.Join(errs...)
+	}
+
+	return nil
+}
+
+func NewConsumer(kafkaURL, group string) (*Consumer, error) {
+	ec, err := kgo.NewClient(
+		kgo.SeedBrokers(kafkaURL),
+		kgo.ConsumeTopics(ProbeResultsTopic),
+		kgo.ConsumerGroup(group),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Consumer{client: ec, group: group}, nil
 }

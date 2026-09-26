@@ -148,9 +148,9 @@ func main() {
 	wg := &sync.WaitGroup{}
 
 	p := Prober{
-		s: s,
-		ep: ep,
-		wg: wg,
+		s:        s,
+		ep:       ep,
+		wg:       wg,
 		registry: map[MonitorID]context.CancelFunc{},
 	}
 	p.Run(ctx)

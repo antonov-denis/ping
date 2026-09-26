@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/antonov-denis/ping/internal/event"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,6 +40,19 @@ func (s *Store) GetActiveMonitors(ctx context.Context) ([]Monitor, error) {
 	}
 
 	return monitors, rows.Err()
+}
+
+func (s *Store) InsertResult(ctx context.Context, r event.ProbeResult) error {
+	var sc *int
+	if r.StatusCode != 0 { sc = &r.StatusCode }
+
+	_, err := s.pool.Exec(
+		ctx,
+		`insert into results (monitor_id, url, checked_at, ok, status_code, latency_ms, error) values ($1, $2, $3, $4, $5, $6, $7)`,
+		r.MonitorID, r.URL, r.CheckedAt, r.OK, *sc, r.LatencyMS, r.Error,
+	)
+
+	return err
 }
 
 func (s *Store) Close() {
