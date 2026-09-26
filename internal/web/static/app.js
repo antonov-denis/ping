@@ -92,6 +92,21 @@ function clockLabel(t, span) {
 	return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
 }
 
+// Axis ticks are not tooltips: five copies of "SEP 21 03:24 PM" do not fit
+// across a card, and they collided into each other on every window past a day.
+// Ticks carry the coarsest label that still distinguishes them; the full
+// timestamp stays in the hover title.
+function tickLabel(t, span) {
+	const d = new Date(t);
+	if (span <= 24 * 3600e3) {
+		return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	}
+	const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+	if (span > 2 * 24 * 3600e3) return date;
+	// 1-3 days: the date alone repeats, so keep the hour but drop the minutes.
+	return `${date} ${d.toLocaleTimeString([], { hour: "numeric" })}`;
+}
+
 const int = (n) => Math.round(n).toLocaleString();
 
 // Round a scale maximum up to something a person would pick.
@@ -313,7 +328,12 @@ function strip(m, height) {
 		// less often than the bucket width still reads as continuous. Capped at
 		// `limit`, so a stretch where nothing ran is still a visible hole.
 		const next = i + 1 < m.Buckets.length ? ms(m.Buckets[i + 1].Start) : Math.min(start + step, to);
-		const width = (Math.min(next - start, limit) / span) * 1000;
+		// Within the monitor's rhythm the bar reaches the next bucket, so a slow
+		// monitor still reads as continuous. Past that the gap is a hole, and the
+		// bar falls back to one step — capping at `limit` instead ate three
+		// quarters of every hole and made the prober's own outages invisible.
+		const covered = next - start <= limit ? next - start : step;
+		const width = (covered / span) * 1000;
 
 		const rect = svg("rect", {
 			class: `bar bar-${st}`,
@@ -325,7 +345,10 @@ function strip(m, height) {
 		// Texture on the amber bucket: green↔amber measures ΔE 7.7 under
 		// protanopia, which is inside the floor band where colour alone is not
 		// allowed to carry the distinction.
-		if (st === "degraded") rect.setAttribute("fill", "url(#hatch)");
+		// style, not setAttribute: `.bar-degraded { fill }` in the stylesheet
+		// outranks a presentation attribute, which is why the hatch never
+		// appeared and partial buckets read as flat amber.
+		if (st === "degraded") rect.style.fill = "url(#hatch)";
 		const title = svg("title");
 		title.textContent = bucketTitle(b, span);
 		rect.append(title);
@@ -348,7 +371,7 @@ function axis(m, ticks = 4) {
 	const root = el("div", "axis");
 	for (let i = 0; i <= ticks; i++) {
 		const frac = i / ticks;
-		const label = el("span", null, clockLabel(from + frac * span, span));
+		const label = el("span", null, tickLabel(from + frac * span, span));
 		label.style.left = `${frac * 100}%`;
 		root.append(label);
 	}
@@ -430,7 +453,9 @@ function sectionTitle(title, note) {
 function latencyChart(m) {
 	const W = 760;
 	const H = 260;
-	const pad = { l: 56, r: 18, t: 18, b: 30 };
+	// The right margin is a gutter for the direct labels: printed over the plot
+	// they landed on the series itself, which is where the eye already is.
+	const pad = { l: 56, r: 48, t: 18, b: 30 };
 	const from = ms(m.From);
 	const span = ms(m.To) - from;
 	const step = cadence(m.Buckets, span / BUCKETS);
@@ -465,7 +490,7 @@ function latencyChart(m) {
 			y: H - pad.b + 18,
 			"text-anchor": i === 0 ? "start" : i === 4 ? "end" : "middle",
 		});
-		label.textContent = clockLabel(t, span);
+		label.textContent = tickLabel(t, span);
 		root.append(label);
 	}
 
@@ -496,9 +521,20 @@ function latencyChart(m) {
 		);
 	}
 
+	// Direct labels, one above the other. A flat monitor has max sitting on top
+	// of avg — the two labels then print over each other — so they are pushed
+	// apart to a legible gap and kept inside the plot.
 	const last = m.Buckets[m.Buckets.length - 1];
-	root.append(directLabel(x(ms(last.Start)) - 6, y(last.MaxMS) - 8, "max", "label-max"));
-	root.append(directLabel(x(ms(last.Start)) - 6, y(last.AvgMS) + 16, "avg", "label-avg"));
+	const lx = W - pad.r + 8;
+	const clamp = (v) => Math.min(Math.max(v, pad.t + 10), H - pad.b - 4);
+	let maxY = clamp(y(last.MaxMS) + 4); // +4 centres the cap height on the line
+	let avgY = clamp(y(last.AvgMS) + 4);
+	if (avgY - maxY < 15) {
+		avgY = clamp(maxY + 15);
+		maxY = avgY - 15;
+	}
+	root.append(directLabel(lx, maxY, "max", "label-max"));
+	root.append(directLabel(lx, avgY, "avg", "label-avg"));
 
 	return withCrosshair(root, m, { W, H, pad, x, y, from, span, step });
 }
@@ -521,7 +557,7 @@ function runs(buckets, step) {
 }
 
 function directLabel(px, py, text, className) {
-	const t = svg("text", { class: `direct ${className}`, x: px, y: py, "text-anchor": "end" });
+	const t = svg("text", { class: `direct ${className}`, x: px, y: py, "text-anchor": "start" });
 	t.textContent = text;
 	return t;
 }
