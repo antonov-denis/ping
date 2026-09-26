@@ -29,15 +29,15 @@ func Unmarshal(b []byte) (ProbeResult, error) {
 	return r, err
 }
 
-type Client struct {
+type Producer struct {
 	client *kgo.Client
 }
 
-func (c *Client) Close() {
+func (c *Producer) Close() {
 	c.client.Close()
 }
 
-func (c *Client) PublishProbe(ctx context.Context, pr ProbeResult) error {
+func (c *Producer) PublishProbe(ctx context.Context, pr ProbeResult) error {
 	v, err := pr.Marshal()
 	if err != nil {
 		return err
@@ -52,11 +52,11 @@ func (c *Client) PublishProbe(ctx context.Context, pr ProbeResult) error {
 	return c.client.ProduceSync(ctx, record).FirstErr()
 }
 
-func NewClient(kafkaURL string) (*Client, error) {
+func NewProducer(kafkaURL string) (*Producer, error) {
 	ec, err := kgo.NewClient(kgo.SeedBrokers(kafkaURL))
 	if err != nil {
 		return nil, err
 	}
 
-	return &Client{client: ec}, nil
+	return &Producer{client: ec}, nil
 }

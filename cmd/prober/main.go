@@ -57,7 +57,7 @@ func probe(pctx context.Context, m store.Monitor) event.ProbeResult {
 type MonitorID = string
 type Prober struct {
 	registry map[MonitorID]context.CancelFunc
-	ec       *event.Client
+	ep       *event.Producer
 	s        *store.Store
 	wg       *sync.WaitGroup
 }
@@ -72,7 +72,7 @@ func (p *Prober) runMonitor(ctx context.Context, m store.Monitor) {
 			return
 		}
 
-		err := p.ec.PublishProbe(ctx, res)
+		err := p.ep.PublishProbe(ctx, res)
 		if err != nil {
 			slog.Error("Couldn't publish probe result", "err", err)
 		}
@@ -138,18 +138,18 @@ func main() {
 	}
 	defer s.Close()
 
-	ec, err := event.NewClient(os.Getenv("KAFKA_URL"))
+	ep, err := event.NewProducer(os.Getenv("KAFKA_URL"))
 	if err != nil {
 		slog.Error("Cloudn't create Kafka client", "err", err)
 		os.Exit(1)
 	}
-	defer ec.Close()
+	defer ep.Close()
 
 	wg := &sync.WaitGroup{}
 
 	p := Prober{
 		s: s,
-		ec: ec,
+		ep: ep,
 		wg: wg,
 		registry: map[MonitorID]context.CancelFunc{},
 	}
