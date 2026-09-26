@@ -21,6 +21,7 @@ var windowDurations = map[string]time.Duration{
 type StatusResponse struct {
 	Name    string
 	URL     string
+	Enabled bool
 	Up      bool
 	Uptime  float64
 	AvgMS   int
@@ -46,6 +47,10 @@ func (sr *StatusResponse) summarise() {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK!"))
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, "index.html", nil)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +83,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	byID := map[string]*StatusResponse{}
 
 	for _, m := range monitors {
-		byID[m.ID] = &StatusResponse{Name: m.Name, URL: m.URL, Buckets: []*store.Bucket{}}
+		byID[m.ID] = &StatusResponse{Name: m.Name, URL: m.URL, Enabled: m.Enabled, Buckets: []*store.Bucket{}}
 	}
 
 	for _, b := range buckets {

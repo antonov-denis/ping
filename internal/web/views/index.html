@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>ping — uptime</title>
+	<meta name="description" content="Every monitor, every check.">
+	<meta name="robots" content="noindex">
+	<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+	<link rel="preload" href="/static/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+	<link rel="preload" href="/static/fonts/geist-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+	<link rel="stylesheet" href="/static/style.css">
+	<meta name="theme-color" content="#9b6bd3">
+	<script>
+		// Applied before paint so there is no light-mode flash on load.
+		try {
+			const stored = localStorage.getItem("ping-theme");
+			const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+			document.documentElement.dataset.theme = stored || preferred;
+		} catch (e) {
+			document.documentElement.dataset.theme = "light";
+		}
+	</script>
+</head>
+<body>
+	<a class="skip-link" href="#main">Skip to the monitors</a>
+
+	<!-- One hatch pattern for every strip on the page. The amber "partial" bucket
+	     is textured as well as coloured: green against amber measures ΔE 7.7 under
+	     protanopia, too close for colour to carry the difference on its own. -->
+	<svg class="sr-defs" aria-hidden="true" focusable="false">
+		<defs>
+			<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+				<rect width="6" height="6" fill="var(--degraded)"/>
+				<rect width="2" height="6" fill="var(--degraded-ink)"/>
+			</pattern>
+		</defs>
+	</svg>
+
+	<header class="site-header">
+		<nav class="nav" aria-label="Primary">
+			<a class="brand" href="/">
+				<span class="brand-code" aria-hidden="true">200</span>
+				<span>ping</span>
+			</a>
+			<p class="nav-note">Refreshes in <span id="countdown">30</span>s</p>
+			<button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle colour theme">
+				<span class="theme-icons" aria-hidden="true">
+					<svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24">
+						<circle cx="12" cy="12" r="4"/>
+						<path d="M12 2v2.5M12 19.5V22M4.93 4.93 6.7 6.7M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07 6.7 17.3M17.3 6.7l1.77-1.77"/>
+					</svg>
+					<svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24">
+						<path d="M20.2 14.8A8.2 8.2 0 0 1 9.2 3.8 8.7 8.7 0 1 0 20.2 14.8Z"/>
+					</svg>
+				</span>
+			</button>
+		</nav>
+	</header>
+
+	<div class="page">
+		<section class="masthead">
+			<p class="eyebrow" id="summary">Loading</p>
+			<h1>All checks, <span class="rule-word">plotted</span>.</h1>
+			<p class="masthead-sub">
+				One bar per bucket, placed where it happened. Hatched stretches are
+				checks that never ran. Open a monitor for its latency.
+			</p>
+		</section>
+
+		<!-- Filters: one row, above everything they scope. -->
+		<div class="controls">
+			<span class="controls-label" id="window-label">Window</span>
+			<div class="windows" role="group" aria-labelledby="window-label" id="windows"></div>
+
+			<p class="legend">
+				<span><i class="swatch swatch-up"></i>Up</span>
+				<span><i class="swatch swatch-degraded"></i>Partial</span>
+				<span><i class="swatch swatch-down"></i>Down</span>
+				<span><i class="swatch swatch-none"></i>No data</span>
+			</p>
+		</div>
+
+		<main id="main">
+			<noscript>
+				<p class="empty">This dashboard renders in the browser. Without JavaScript,
+				read <a href="/api/status?window=1h">/api/status?window=1h</a> directly.</p>
+			</noscript>
+			<div class="monitors" id="monitors" aria-busy="true"></div>
+		</main>
+	</div>
+
+	<dialog class="detail" id="detail" aria-labelledby="detail-name">
+		<form method="dialog" class="detail-close-form">
+			<button class="detail-close" value="close" aria-label="Close">esc</button>
+		</form>
+		<div id="detail-body"></div>
+	</dialog>
+
+	<footer class="footer">
+		<p>
+			<span>ping</span>
+			<span><a href="/api/status?window=1h" id="json-link">JSON</a> · Built by <a href="https://denisantonov.com" target="_blank" rel="noopener">denisantonov.com</a></span>
+		</p>
+	</footer>
+
+	<script src="/static/app.js" type="module"></script>
+</body>
+</html>

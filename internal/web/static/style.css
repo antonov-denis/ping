@@ -1,0 +1,1112 @@
+/* ==========================================================================
+   ping — neo-brutalist system
+   Same design language as go301.link and denisantonov.com: 3px ink borders,
+   zero-blur offset shadows, hard square edges, flat colour blocks, 900-weight
+   uppercase display type on Geist, mono for every label.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------- fonts
+   Self-hosted latin subsets (OFL, see fonts/LICENSE-geist.txt). */
+
+@font-face {
+	font-family: "Geist Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("/static/fonts/geist-latin-wght-normal.woff2") format("woff2-variations");
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+		U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+		U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+	font-family: "Geist Mono Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("/static/fonts/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+		U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+		U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ------------------------------------------------------------------ tokens */
+
+:root {
+	color-scheme: light;
+
+	--bg: #fbf7ff;
+	--ink: #1c1725;
+	--muted: #665f70;
+	--panel: #ffffff;
+	--panel-soft: #f0e8fb;
+	--line: #1c1725;
+
+	--accent: #9b6bd3;
+	--accent-strong: #5b347f;
+	--accent-ink: #ffffff;
+	--lime: #d7bcf5;
+	--cyan: #b9cdea;
+	--coral: #f2bfc9;
+	--gold: #eed6a8;
+
+	/* Status. Two jobs each: a saturated tone for the timeline bars, which are
+	   thin and carry no text, and a pastel block for the pills, which do. Never
+	   the only signal — every state is also spelled out in words. */
+	--up: #2f8f5b;
+	--degraded: #c98a12;
+	--down: #c0392b;
+	--degraded-ink: #7a5207;
+	--up-soft: #bfe8cf;
+	--degraded-soft: #f5dfa8;
+	--down-soft: #f5c2bb;
+
+	/* Flat blocks stay light in both themes, so their text colour is fixed. */
+	--on-block: #1c1725;
+
+	--shadow-c: #1c1725;
+	--border-w: 3px;
+	--shadow: 6px 6px 0 var(--shadow-c);
+	--shadow-sm: 4px 4px 0 var(--shadow-c);
+
+	--font-body: "Geist Variable", Inter, ui-sans-serif, system-ui, -apple-system,
+		BlinkMacSystemFont, "Segoe UI", sans-serif;
+	--font-display: "Geist Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "Geist Mono Variable", "SFMono-Regular", Consolas,
+		"Liberation Mono", monospace;
+
+	--gutter: 1.15rem;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+
+	--bg: #181321;
+	--ink: #f8f2ff;
+	--muted: #c7bbd5;
+	--panel: #241c30;
+	--panel-soft: #30243f;
+	--line: #9b7fc4;
+
+	--accent: #c8a0ff;
+	--accent-strong: #ead9ff;
+	--accent-ink: #181321;
+
+	--lime: #ddc4ff;
+	--cyan: #9bb8e8;
+	--coral: #eba0b1;
+	--gold: #dfbc78;
+
+	/* Bars lift, pill blocks stay light: their text colour is fixed to --ink. */
+	--up: #4ec585;
+	--degraded: #e5b23c;
+	--down: #ef6a59;
+	--degraded-ink: #4a3104;
+
+	--shadow-c: #9b7fc4;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--bg);
+	color: var(--ink);
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+	color: var(--ink);
+	font: 1rem/1.6 var(--font-body);
+	background-color: var(--bg);
+	background-image: linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--line), transparent 90%) var(--border-w),
+			transparent var(--border-w)
+		),
+		linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--line), transparent 90%) var(--border-w),
+			transparent var(--border-w)
+		);
+	background-size: 64px 64px;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: inherit;
+	text-decoration-thickness: 2px;
+	text-underline-offset: 0.2em;
+}
+
+button {
+	font: inherit;
+	cursor: pointer;
+}
+
+svg {
+	display: block;
+	max-width: 100%;
+}
+
+:focus-visible {
+	outline: var(--border-w) solid var(--accent);
+	outline-offset: 3px;
+}
+
+::selection {
+	background: var(--lime);
+	color: var(--on-block);
+}
+
+/* -------------------------------------------------------------- typography */
+
+h1,
+h2 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-weight: 900;
+	letter-spacing: -0.035em;
+	line-height: 1.02;
+	text-transform: uppercase;
+}
+
+h1 {
+	font-size: clamp(2.25rem, 7vw, 3.5rem);
+}
+
+p {
+	margin: 0;
+}
+
+.eyebrow {
+	display: inline-block;
+	width: fit-content;
+	border: var(--border-w) solid var(--line);
+	padding: 0.28rem 0.7rem;
+	background: var(--gold);
+	color: var(--on-block);
+	box-shadow: var(--shadow-sm);
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+/* ----------------------------------------------------------- skip + header */
+
+.skip-link {
+	position: fixed;
+	left: 1rem;
+	top: 1rem;
+	z-index: 100;
+	transform: translateY(-200%);
+	border: var(--border-w) solid var(--line);
+	padding: 0.7rem 0.9rem;
+	background: var(--lime);
+	color: var(--on-block);
+	box-shadow: var(--shadow);
+	font-family: var(--font-mono);
+	font-weight: 700;
+	text-decoration: none;
+	text-transform: uppercase;
+}
+
+.skip-link:focus {
+	transform: translateY(0);
+}
+
+.site-header {
+	position: sticky;
+	top: 0;
+	z-index: 90;
+	border-bottom: var(--border-w) solid var(--line);
+	background: var(--panel);
+}
+
+.nav {
+	min-height: 4.25rem;
+	margin: 0 auto;
+	padding: 0 var(--gutter);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+.brand {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6rem;
+	font-family: var(--font-display);
+	font-size: 1.05rem;
+	font-weight: 900;
+	letter-spacing: -0.02em;
+	text-decoration: none;
+	text-transform: uppercase;
+}
+
+.brand-code {
+	border: var(--border-w) solid var(--line);
+	padding: 0.1rem 0.42rem;
+	background: var(--accent-strong);
+	color: var(--accent-ink);
+	font-size: 0.82rem;
+	letter-spacing: 0.02em;
+	font-variant-numeric: tabular-nums;
+}
+
+.brand:hover .brand-code {
+	background: var(--lime);
+	color: var(--on-block);
+}
+
+.nav-note {
+	display: none;
+	font-family: var(--font-mono);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.theme-toggle {
+	position: relative;
+	width: 2.6rem;
+	height: 2.6rem;
+	display: grid;
+	place-items: center;
+	border: var(--border-w) solid var(--line);
+	padding: 0;
+	background: var(--panel);
+	color: var(--ink);
+	box-shadow: var(--shadow-sm);
+	transition:
+		transform 0.12s ease-out,
+		box-shadow 0.12s ease-out,
+		background-color 0.12s ease-out;
+}
+
+.theme-toggle:hover {
+	background: var(--coral);
+	color: var(--on-block);
+	transform: translate(2px, 2px);
+	box-shadow: 2px 2px 0 var(--shadow-c);
+}
+
+.theme-icons {
+	display: grid;
+	place-items: center;
+}
+
+.theme-icon {
+	grid-area: 1 / 1;
+	width: 1.25rem;
+	height: 1.25rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.25;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.theme-icon-moon {
+	display: none;
+}
+
+:root[data-theme="dark"] .theme-icon-sun {
+	display: none;
+}
+
+:root[data-theme="dark"] .theme-icon-moon {
+	display: block;
+}
+
+/* -------------------------------------------------------------- page shell */
+
+/* The shared hatch pattern lives in an SVG that must be in the document but
+   never seen. */
+.sr-defs {
+	position: absolute;
+	width: 0;
+	height: 0;
+}
+
+.page {
+	flex: 1 0 auto;
+	width: 100%;
+	max-width: 90rem;
+	margin: 0 auto;
+	padding: 2.5rem var(--gutter) 3rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1.5rem;
+}
+
+.masthead {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.masthead h1 .rule-word {
+	display: inline-block;
+	border-bottom: 10px solid var(--accent);
+}
+
+.masthead-sub {
+	max-width: 52ch;
+	border-left: var(--border-w) solid var(--line);
+	padding-left: 0.85rem;
+	font-family: var(--font-mono);
+	font-size: 0.76rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	line-height: 1.5;
+	text-transform: uppercase;
+}
+
+/* ------------------------------------------------- controls: one row, on top */
+
+.controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.controls-label {
+	font-family: var(--font-mono);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.windows {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.window {
+	border: var(--border-w) solid var(--line);
+	padding: 0.35rem 0.75rem;
+	background: var(--panel);
+	color: var(--ink);
+	box-shadow: 3px 3px 0 var(--shadow-c);
+	font-family: var(--font-mono);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	transition:
+		transform 0.12s ease-out,
+		box-shadow 0.12s ease-out,
+		background-color 0.12s ease-out;
+}
+
+.window:hover {
+	background: var(--lime);
+	color: var(--on-block);
+	transform: translate(2px, 2px);
+	box-shadow: 1px 1px 0 var(--shadow-c);
+}
+
+.window[aria-current="true"] {
+	background: var(--accent-strong);
+	color: var(--accent-ink);
+}
+
+.legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.9rem;
+	margin-left: auto;
+	font-family: var(--font-mono);
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.legend span {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.swatch {
+	width: 0.85rem;
+	height: 0.85rem;
+	border: 2px solid var(--line);
+}
+
+.swatch-up {
+	background: var(--up);
+}
+
+/* Same texture the amber bucket carries, so the legend matches the mark. */
+.swatch-degraded {
+	background: var(--degraded);
+	background-image: repeating-linear-gradient(
+		45deg,
+		transparent 0 2px,
+		var(--degraded-ink) 2px 4px
+	);
+}
+
+.swatch-down {
+	background: var(--down);
+}
+
+.swatch-none {
+	background: var(--panel-soft);
+	background-image: repeating-linear-gradient(
+		45deg,
+		transparent 0 3px,
+		color-mix(in srgb, var(--line), transparent 60%) 3px 6px
+	);
+}
+
+/* ------------------------------------------------------- monitors (masonry) */
+
+/* Cards are placed by layout() in app.js — shortest column wins — so the track
+   is just a positioning context whose height the script sets. */
+.monitors {
+	position: relative;
+}
+
+.monitor {
+	position: absolute;
+	display: block;
+	margin: 0;
+	border: var(--border-w) solid var(--line);
+	padding: 1.1rem 1.2rem 1.2rem 1.9rem;
+	background: var(--panel);
+	color: var(--ink);
+	box-shadow: var(--shadow);
+	font: inherit;
+	text-align: left;
+	transition:
+		transform 0.12s ease-out,
+		box-shadow 0.12s ease-out;
+}
+
+.monitor:hover,
+.monitor:focus-visible {
+	transform: translate(3px, 3px);
+	box-shadow: 3px 3px 0 var(--shadow-c);
+}
+
+/* Colour spine down the left edge, drawn over the frame so the border still
+   reads as one continuous 3px line around the block. */
+.monitor::before {
+	content: "";
+	position: absolute;
+	left: calc(var(--border-w) * -1);
+	top: calc(var(--border-w) * -1);
+	bottom: calc(var(--border-w) * -1);
+	width: 12px;
+	border: var(--border-w) solid var(--line);
+	background: var(--up);
+}
+
+.monitor.is-down::before {
+	background: var(--down);
+}
+
+.monitor.is-idle::before {
+	background: var(--panel-soft);
+}
+
+.monitor-head {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	margin-bottom: 0.5rem;
+}
+
+/* ---------------------------------------------------------- card variants
+   Same content, three arrangements. Heights differ, which is what gives the
+   masonry something to pack. Below two columns every card falls back to
+   .v-standard — see variantFor() in app.js. */
+
+.v-hero .hero {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	margin-bottom: 0.7rem;
+	border-bottom: var(--border-w) solid var(--line);
+	padding-bottom: 0.5rem;
+}
+
+.v-hero .hero-value {
+	font-family: var(--font-display);
+	font-size: 2.4rem;
+	font-weight: 900;
+	letter-spacing: -0.04em;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+
+.v-hero .hero-label {
+	font-family: var(--font-mono);
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.v-hero .monitor-url {
+	margin-bottom: 0.9rem;
+}
+
+.v-hero .figures {
+	margin: 0.75rem 0 0;
+}
+
+/* Compact: title, strip, numbers, url — and no axis, since the dialog has one. */
+.v-compact .monitor-head {
+	margin-bottom: 0.7rem;
+}
+
+.v-compact .monitor-url {
+	margin: 0.7rem 0 0;
+}
+
+.v-compact .figures {
+	margin: 0.7rem 0 0;
+}
+
+.monitor-name {
+	font-family: var(--font-display);
+	font-size: 1.1rem;
+	font-weight: 900;
+	letter-spacing: -0.02em;
+	text-transform: uppercase;
+}
+
+.monitor-url {
+	overflow: hidden;
+	margin-bottom: 0.8rem;
+	font-family: var(--font-mono);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--muted);
+}
+
+.pill {
+	flex: none;
+	border: var(--border-w) solid var(--line);
+	padding: 0.15rem 0.55rem;
+	color: var(--on-block);
+	box-shadow: 3px 3px 0 var(--shadow-c);
+	font-family: var(--font-mono);
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+.pill-up {
+	background: var(--up-soft);
+}
+
+.pill-down {
+	background: var(--down-soft);
+}
+
+.pill-idle {
+	background: var(--panel-soft);
+}
+
+.figures {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin: 0 0 0.9rem;
+}
+
+.timeline {
+	margin: 0;
+}
+
+.figure {
+	border: var(--border-w) solid var(--line);
+	padding: 0.2rem 0.6rem;
+	background: var(--panel-soft);
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.figure b {
+	font-weight: 900;
+}
+
+.figure-label {
+	margin-left: 0.35rem;
+	color: var(--muted);
+}
+
+/* -------------------------------------------------------- availability strip */
+
+.strip {
+	display: block;
+	width: 100%;
+	border: var(--border-w) solid var(--line);
+	background: var(--panel-soft);
+	/* Hatching behind the bars: a stretch with no buckets is a stretch where no
+	   check ran, and it should not read as quiet. */
+	background-image: repeating-linear-gradient(
+		45deg,
+		transparent 0 6px,
+		color-mix(in srgb, var(--line), transparent 72%) 6px 12px
+	);
+}
+
+.bar-up {
+	fill: var(--up);
+}
+
+.bar-degraded {
+	fill: var(--degraded);
+}
+
+.bar-down {
+	fill: var(--down);
+}
+
+.axis {
+	position: relative;
+	height: 1.1rem;
+	margin-top: 0.45rem;
+	font-family: var(--font-mono);
+	font-size: 0.62rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.axis span {
+	position: absolute;
+	transform: translateX(-50%);
+	white-space: nowrap;
+}
+
+.axis span:first-child {
+	transform: none;
+}
+
+.axis span:last-child {
+	transform: translateX(-100%);
+}
+
+/* ------------------------------------------------------------------- dialog */
+
+.detail {
+	width: min(64rem, calc(100% - 2rem));
+	max-height: min(52rem, calc(100dvh - 3rem));
+	border: var(--border-w) solid var(--line);
+	padding: 0;
+	background: var(--panel);
+	color: var(--ink);
+	box-shadow: var(--shadow);
+}
+
+.detail::backdrop {
+	background: color-mix(in srgb, #1c1725, transparent 25%);
+}
+
+.detail-close-form {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	display: flex;
+	justify-content: flex-end;
+	padding: 0.75rem 0.75rem 0;
+}
+
+.detail-close {
+	border: var(--border-w) solid var(--line);
+	padding: 0.25rem 0.7rem;
+	background: var(--coral);
+	color: var(--on-block);
+	box-shadow: 3px 3px 0 var(--shadow-c);
+	font-family: var(--font-mono);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+.detail-close:hover {
+	transform: translate(2px, 2px);
+	box-shadow: 1px 1px 0 var(--shadow-c);
+}
+
+.detail-inner {
+	display: flex;
+	flex-direction: column;
+	gap: 1.1rem;
+	padding: 0.25rem 1.5rem 1.75rem;
+}
+
+.detail-head {
+	display: flex;
+	align-items: center;
+	gap: 0.7rem;
+}
+
+.detail-name {
+	font-size: clamp(1.5rem, 4vw, 2.1rem);
+}
+
+.detail-url {
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
+/* -------------------------------------------------------------- stat tiles */
+
+.tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+	gap: 0.6rem;
+}
+
+.tile {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	border: var(--border-w) solid var(--line);
+	padding: 0.7rem 0.8rem;
+	background: var(--panel-soft);
+}
+
+.tile-value {
+	font-family: var(--font-display);
+	font-size: 1.45rem;
+	font-weight: 900;
+	letter-spacing: -0.03em;
+	font-variant-numeric: tabular-nums;
+}
+
+.tile-label {
+	font-family: var(--font-mono);
+	font-size: 0.62rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.tile-up {
+	background: var(--up-soft);
+	color: var(--on-block);
+}
+
+.tile-down {
+	background: var(--down-soft);
+	color: var(--on-block);
+}
+
+.tile-up .tile-label,
+.tile-down .tile-label {
+	color: color-mix(in srgb, var(--on-block), transparent 30%);
+}
+
+/* ------------------------------------------------------------ section heads */
+
+.section-title {
+	display: flex;
+	align-items: baseline;
+	gap: 0.7rem;
+	border-bottom: var(--border-w) solid var(--line);
+	padding-bottom: 0.35rem;
+}
+
+.section-title h3 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: 0.95rem;
+	font-weight: 900;
+	letter-spacing: -0.01em;
+	text-transform: uppercase;
+}
+
+.section-note {
+	font-family: var(--font-mono);
+	font-size: 0.64rem;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+/* -------------------------------------------------------------- the chart */
+
+.chart-wrap {
+	position: relative;
+}
+
+.chart {
+	display: block;
+	width: 100%;
+	height: auto;
+	overflow: visible;
+	touch-action: none;
+}
+
+/* Grid and axes stay recessive: the data is the only thing with weight. */
+.grid {
+	stroke: color-mix(in srgb, var(--line), transparent 78%);
+	stroke-width: 1;
+}
+
+.tick {
+	fill: var(--muted);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+}
+
+.tick-y {
+	text-anchor: end;
+}
+
+.area-max {
+	fill: color-mix(in srgb, var(--accent), transparent 72%);
+	stroke: none;
+}
+
+.line-avg {
+	fill: none;
+	stroke: var(--accent-strong);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+
+/* Two marks, so both are named on the chart itself — no legend box needed. */
+.direct {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.label-max {
+	fill: color-mix(in srgb, var(--accent), var(--ink) 35%);
+}
+
+.label-avg {
+	fill: var(--accent-strong);
+}
+
+.hair {
+	stroke: var(--line);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+}
+
+.hair-dot {
+	fill: var(--accent-strong);
+	stroke: var(--panel);
+	stroke-width: 2;
+}
+
+.tip {
+	position: absolute;
+	top: 0;
+	transform: translateX(-50%);
+	pointer-events: none;
+	border: var(--border-w) solid var(--line);
+	padding: 0.5rem 0.6rem;
+	background: var(--panel);
+	box-shadow: var(--shadow-sm);
+	font-family: var(--font-mono);
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.tip-time {
+	display: block;
+	margin-bottom: 0.3rem;
+	color: var(--muted);
+}
+
+.tip-row {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+/* Tooltip rows key their series with a stroke of the mark's own colour. */
+.key {
+	width: 0.8rem;
+	height: 0.2rem;
+	border: 1px solid var(--line);
+}
+
+.key-avg {
+	background: var(--accent-strong);
+}
+
+.key-max {
+	background: color-mix(in srgb, var(--accent), transparent 40%);
+}
+
+.key-up {
+	background: var(--up);
+}
+
+.key-degraded {
+	background: var(--degraded);
+}
+
+.key-down {
+	background: var(--down);
+}
+
+.tip-label {
+	color: var(--muted);
+}
+
+/* ------------------------------------------------------------------- empty */
+
+.empty {
+	border: var(--border-w) solid var(--line);
+	border-left-width: 12px;
+	padding: 1.1rem 1.2rem;
+	background: var(--coral);
+	color: var(--on-block);
+	box-shadow: var(--shadow);
+	font-family: var(--font-mono);
+	font-size: 0.74rem;
+	font-weight: 700;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.empty-soft {
+	background: var(--panel-soft);
+	color: var(--muted);
+	border-left-width: var(--border-w);
+	box-shadow: none;
+	font-size: 0.68rem;
+}
+
+/* ------------------------------------------------------------------ footer */
+
+.footer {
+	flex: none;
+	border-top: var(--border-w) solid var(--line);
+	background: var(--ink);
+	color: var(--bg);
+}
+
+.footer p {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	max-width: 90rem;
+	margin: 0 auto;
+	padding: 1.5rem var(--gutter);
+	font-family: var(--font-mono);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+.footer a {
+	color: inherit;
+	text-decoration: underline;
+	text-decoration-thickness: var(--border-w);
+	text-underline-offset: 0.24em;
+}
+
+.footer a:hover {
+	background: var(--lime);
+	color: var(--on-block);
+	text-decoration-color: var(--on-block);
+}
+
+/* ------------------------------------------------------------------ motion */
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+
+	.window:hover,
+	.monitor:hover,
+	.theme-toggle:hover,
+	.detail-close:hover {
+		transform: none;
+	}
+}
+
+/* ------------------------------------------------------------- breakpoints */
+
+@media (min-width: 40rem) {
+	:root {
+		--gutter: 2rem;
+	}
+}
+
+@media (min-width: 54rem) {
+	.nav-note {
+		display: block;
+	}
+}
+
+@media (min-width: 62rem) {
+	.page {
+		padding-top: 3.5rem;
+		padding-left: 3rem;
+		padding-right: 3rem;
+	}
+
+	.nav,
+	.footer p {
+		padding-left: 3rem;
+		padding-right: 3rem;
+	}
+}

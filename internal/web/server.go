@@ -13,7 +13,9 @@ type Server struct {
 
 func (s *Server) routes() {
 	s.mux = http.NewServeMux()
+	s.mux.Handle("GET /static/", staticFiles())
 
+	s.mux.HandleFunc("GET /{$}", s.handleDashboard)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/status", s.handleStatus)
 }
