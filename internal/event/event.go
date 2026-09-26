@@ -11,6 +11,7 @@ import (
 const ProbeResultsTopic = "probe.results"
 
 type ProbeResult struct {
+	MonitorID  string    `json:"monitor_id"`
 	Monitor    string    `json:"monitor"`
 	URL        string    `json:"url"`
 	OK         bool      `json:"ok"`

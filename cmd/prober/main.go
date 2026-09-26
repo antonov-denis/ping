@@ -18,6 +18,7 @@ import (
 
 func probe(pctx context.Context, m store.Monitor) event.ProbeResult {
 	e := event.ProbeResult{
+		MonitorID: m.ID,
 		Monitor:   m.Name,
 		URL:       m.URL,
 		OK:        false,
