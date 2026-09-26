@@ -930,6 +930,16 @@ p {
 	fill: var(--accent-strong);
 }
 
+.point-avg {
+	fill: var(--accent-strong);
+	stroke: var(--panel);
+	stroke-width: 2;
+}
+
+.point-max {
+	fill: color-mix(in srgb, var(--accent), var(--ink) 20%);
+}
+
 .hair {
 	stroke: var(--line);
 	stroke-width: 1;

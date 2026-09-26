@@ -8,6 +8,9 @@
 const WINDOWS = ["1h", "3h", "12h", "1d", "3d", "7d"];
 const MIN_COL = 368; // px — narrowest a card may get before dropping a column
 const GAP = 20;
+// How far apart two buckets may sit before the space between them counts as a
+// hole rather than the normal rhythm of a slow monitor.
+const GAP_FACTOR = 1.75;
 const BUCKETS = 180;
 const REFRESH_S = 30;
 
@@ -50,6 +53,23 @@ function initialWindow() {
 }
 
 const ms = (iso) => new Date(iso).getTime();
+
+// The observed spacing between buckets, which is NOT the bucket width: a
+// monitor probed every 60s in a window with 20s buckets produces one bucket per
+// three, and every bucket looks isolated. Comparing against the bucket width
+// there marks a perfectly healthy monitor as all gap.
+function cadence(buckets, bucketMs) {
+	if (buckets.length < 2) return bucketMs;
+
+	const gaps = [];
+	for (let i = 1; i < buckets.length; i++) {
+		gaps.push(ms(buckets[i].Start) - ms(buckets[i - 1].Start));
+	}
+	gaps.sort((a, b) => a - b);
+
+	// Median, so one real outage does not drag the estimate up.
+	return Math.max(bucketMs, gaps[Math.floor(gaps.length / 2)]);
+}
 
 function bucketState(b) {
 	if (b.OKCount === b.Total) return "up";
@@ -271,8 +291,10 @@ function figure(value, label) {
 // width the card ends up with, and the arithmetic stays in one place.
 function strip(m, height) {
 	const from = ms(m.From);
-	const span = ms(m.To) - from;
-	const width = (1000 / BUCKETS) * 1.25; // overlap: adjacent rects must not seam
+	const to = ms(m.To);
+	const span = to - from;
+	const step = cadence(m.Buckets, span / BUCKETS);
+	const limit = step * GAP_FACTOR;
 
 	const root = svg("svg", {
 		class: "strip",
@@ -284,13 +306,20 @@ function strip(m, height) {
 		"aria-label": `${m.Name}: ${m.Uptime.toFixed(2)}% of checks succeeded`,
 	});
 
-	for (const b of m.Buckets) {
+	m.Buckets.forEach((b, i) => {
 		const st = bucketState(b);
+		const start = ms(b.Start);
+		// A bar covers the ground up to the next bucket, so a monitor checked
+		// less often than the bucket width still reads as continuous. Capped at
+		// `limit`, so a stretch where nothing ran is still a visible hole.
+		const next = i + 1 < m.Buckets.length ? ms(m.Buckets[i + 1].Start) : Math.min(start + step, to);
+		const width = (Math.min(next - start, limit) / span) * 1000;
+
 		const rect = svg("rect", {
 			class: `bar bar-${st}`,
-			x: Math.max(0, ((ms(b.Start) - from) / span) * 1000),
+			x: Math.max(0, ((start - from) / span) * 1000),
 			y: 0,
-			width,
+			width: width + 0.3, // hairline overlap so neighbours do not seam
 			height: 40,
 		});
 		// Texture on the amber bucket: green↔amber measures ΔE 7.7 under
@@ -301,7 +330,7 @@ function strip(m, height) {
 		title.textContent = bucketTitle(b, span);
 		rect.append(title);
 		root.append(rect);
-	}
+	});
 
 	return root;
 }
@@ -404,7 +433,7 @@ function latencyChart(m) {
 	const pad = { l: 56, r: 18, t: 18, b: 30 };
 	const from = ms(m.From);
 	const span = ms(m.To) - from;
-	const bucketMs = span / BUCKETS;
+	const step = cadence(m.Buckets, span / BUCKETS);
 
 	const top = niceMax(Math.max(...m.Buckets.map((b) => b.MaxMS)));
 	const x = (t) => pad.l + ((t - from) / span) * (W - pad.l - pad.r);
@@ -442,8 +471,18 @@ function latencyChart(m) {
 
 	// Break both marks wherever a bucket is missing, so the line never draws a
 	// straight run across an outage the prober did not observe.
-	for (const run of runs(m.Buckets, bucketMs)) {
-		const pts = run.map((b) => [x(ms(b.Start) + bucketMs / 2), b]);
+	for (const run of runs(m.Buckets, step)) {
+		const pts = run.map((b) => [x(ms(b.Start) + step / 2), b]);
+
+		// A lone sample has no line to be part of — draw it as a point rather
+		// than dropping it, which is what used to empty the whole chart.
+		if (pts.length === 1) {
+			const [px, b] = pts[0];
+			root.append(svg("circle", { class: "point-max", cx: px, cy: y(b.MaxMS), r: 4 }));
+			root.append(svg("circle", { class: "point-avg", cx: px, cy: y(b.AvgMS), r: 4.5 }));
+			continue;
+		}
+
 		const area =
 			`M${pts[0][0]},${y(0)} ` +
 			pts.map(([px, b]) => `L${px},${y(b.MaxMS)}`).join(" ") +
@@ -461,23 +500,24 @@ function latencyChart(m) {
 	root.append(directLabel(x(ms(last.Start)) - 6, y(last.MaxMS) - 8, "max", "label-max"));
 	root.append(directLabel(x(ms(last.Start)) - 6, y(last.AvgMS) + 16, "avg", "label-avg"));
 
-	return withCrosshair(root, m, { W, H, pad, x, y, from, span });
+	return withCrosshair(root, m, { W, H, pad, x, y, from, span, step });
 }
 
-// Consecutive buckets, split wherever one is missing.
-function runs(buckets, bucketMs) {
+// Consecutive buckets, split wherever the spacing exceeds the monitor's own
+// rhythm. Single-bucket runs are kept: latencyChart draws them as points.
+function runs(buckets, step) {
 	const out = [];
 	let run = [];
 	for (const b of buckets) {
 		const prev = run[run.length - 1];
-		if (prev && ms(b.Start) - ms(prev.Start) > bucketMs * 1.5) {
+		if (prev && ms(b.Start) - ms(prev.Start) > step * GAP_FACTOR) {
 			out.push(run);
 			run = [];
 		}
 		run.push(b);
 	}
 	if (run.length) out.push(run);
-	return out.filter((r) => r.length > 1);
+	return out;
 }
 
 function directLabel(px, py, text, className) {
@@ -518,7 +558,7 @@ function withCrosshair(chart, m, geo) {
 				near = b;
 			}
 		}
-		if (!near || best > geo.span / BUCKETS * 3) return hide();
+		if (!near || best > geo.step * GAP_FACTOR) return hide();
 
 		const hx = geo.x(ms(near.Start));
 		hair.setAttribute("x1", hx);
