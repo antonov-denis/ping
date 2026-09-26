@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -37,13 +38,22 @@ func run() error {
 		Handler:      srv,
 	}
 
-	err = server.ListenAndServe()
-	if err != nil {
-		slog.Error(err.Error())
+	shutdown := make(chan error, 1)
+	go func() {
+		<-ctx.Done()
+		slog.Info("Shutting down")
+
+		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		shutdown <- server.Shutdown(sctx)
+	}()
+
+	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 
-	return nil
+	return <-shutdown
 }
 
 func main() {

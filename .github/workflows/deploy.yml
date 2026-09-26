@@ -1,0 +1,48 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/antonov-denis/ping
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+
+      - name: Deploy to k3s
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            set -e
+            sudo kubectl set image deployment/ping-web    web=${{ env.IMAGE }}:${{ github.sha }}
+            sudo kubectl set image deployment/ping-writer writer=${{ env.IMAGE }}:${{ github.sha }}
+            sudo kubectl set image deployment/ping-prober prober=${{ env.IMAGE }}:${{ github.sha }}
+            sudo kubectl rollout status deployment/ping-web
+            sudo kubectl rollout status deployment/ping-writer
+            sudo kubectl rollout status deployment/ping-prober

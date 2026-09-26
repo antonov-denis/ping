@@ -1,0 +1,332 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ping-db
+  namespace: default
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-db
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ping-db
+  template:
+    metadata:
+      labels:
+        app: ping-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: ping
+            - name: POSTGRES_DB
+              value: ping
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ping-db
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "ping"]
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "384Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ping-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ping-db
+  namespace: default
+spec:
+  selector:
+    app: ping-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ping-redpanda
+  namespace: default
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-redpanda
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ping-redpanda
+  template:
+    metadata:
+      labels:
+        app: ping-redpanda
+    spec:
+      securityContext:
+        fsGroup: 101
+      containers:
+        - name: redpanda
+          image: redpandadata/redpanda:v25.2.5
+          command:
+            - rpk
+            - redpanda
+            - start
+            - --smp=1
+            - --memory=512M
+            - --reserve-memory=0M
+            - --overprovisioned
+            - --check=false
+            - --node-id=0
+            - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr=PLAINTEXT://ping-redpanda:9092
+            - --rpc-addr=0.0.0.0:33145
+            - --advertise-rpc-addr=ping-redpanda:33145
+          ports:
+            - containerPort: 9092
+              name: kafka
+            - containerPort: 33145
+              name: rpc
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+          readinessProbe:
+            exec:
+              command: ["rpk", "cluster", "health", "--exit-when-healthy"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 10
+          resources:
+            requests:
+              memory: "640Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ping-redpanda
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ping-redpanda
+  namespace: default
+spec:
+  selector:
+    app: ping-redpanda
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092
+    - name: rpc
+      port: 33145
+      targetPort: 33145
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-prober
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ping-prober
+  template:
+    metadata:
+      labels:
+        app: ping-prober
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: prober
+          image: ghcr.io/antonov-denis/ping:latest
+          command: ["/prober"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ping-db
+                  key: DATABASE_URL
+            - name: KAFKA_URL
+              value: "ping-redpanda:9092"
+            - name: GOMEMLIMIT
+              value: "100MiB"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-writer
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ping-writer
+  template:
+    metadata:
+      labels:
+        app: ping-writer
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: writer
+          image: ghcr.io/antonov-denis/ping:latest
+          command: ["/writer"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ping-db
+                  key: DATABASE_URL
+            - name: KAFKA_URL
+              value: "ping-redpanda:9092"
+            - name: GOMEMLIMIT
+              value: "100MiB"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-web
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ping-web
+  template:
+    metadata:
+      labels:
+        app: ping-web
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: web
+          image: ghcr.io/antonov-denis/ping:latest
+          command: ["/web"]
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ping-db
+                  key: DATABASE_URL
+            - name: GOMEMLIMIT
+              value: "100MiB"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ping-web
+  namespace: default
+spec:
+  selector:
+    app: ping-web
+  ports:
+    - port: 80
+      targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ping-web
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+spec:
+  tls:
+    - hosts:
+        - ping.denisantonov.com
+  rules:
+    - host: ping.denisantonov.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ping-web
+                port:
+                  number: 80
